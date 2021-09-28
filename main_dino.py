@@ -142,7 +142,7 @@ def train_dino(args):
         args.local_crops_number,
     )
     #dataset = datasets.ImageFolder(args.data_path, transform=transform)
-    dataset = ImageNetLMDB('/nothing/', 'train.lmdb', transform=transform)
+    dataset = ImageNetLMDB('/nothing/', 'train.lmdb', aug=transform)
     sampler = torch.utils.data.DistributedSampler(dataset, shuffle=True)
     data_loader = torch.utils.data.DataLoader(
         dataset,
