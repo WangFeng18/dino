@@ -334,7 +334,7 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
         pred2 = utils.concat_all_gather(all_probs[1].max(dim=1)[1])
         acc = (pred1 == pred2).sum()/pred1.size(0)
         pred_labels.append(pred1)
-        real_labels.append(utils.concat_all_gather(real_label.to(device).long()))
+        real_labels.append(utils.concat_all_gather(real_label.cuda().long()))
 
         if not math.isfinite(loss.item()):
             print("Loss is {}, stopping training".format(loss.item()), force=True)
