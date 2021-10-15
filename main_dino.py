@@ -30,10 +30,12 @@ import torch.nn.functional as F
 from torchvision import datasets, transforms
 from torchvision import models as torchvision_models
 from datasets import ImageNetLMDB
+from tensorboardX import SummaryWriter
 
 import utils
 import vision_transformer as vits
 from vision_transformer import DINOHead
+from evaluate_cluster import evaluate as eval_pred
 
 torchvision_archs = sorted(name for name in torchvision_models.__dict__
     if name.islower() and not name.startswith("__")
@@ -260,6 +262,11 @@ def train_dino(args):
 
     start_time = time.time()
     print("Starting DINO training !")
+    
+    if utils.is_main_process(): # Tensorboard configuration
+        local_runs = os.path.join(args.output_dir, 'runs_{}'.format( args.output_dir.replace('/','').replace('.','') ))
+        writer = SummaryWriter(logdir=local_runs)
+
     for epoch in range(start_epoch, args.epochs):
         data_loader.sampler.set_epoch(epoch)
 
@@ -287,6 +294,12 @@ def train_dino(args):
         if utils.is_main_process():
             with (Path(args.output_dir) / "log.txt").open("a") as f:
                 f.write(json.dumps(log_stats) + "\n")
+            for k, v in train_stats.items():
+                writer.add_scalar(k, v, epoch)
+
+            cmd = 'bash tools/transfer_data.sh {} {}'.format(local_runs, 'mmeruns/')
+            os.system(cmd)
+
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str))
@@ -297,7 +310,8 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
                     fp16_scaler, args):
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Epoch: [{}/{}]'.format(epoch, args.epochs)
-    for it, (images, _) in enumerate(metric_logger.log_every(data_loader, 10, header)):
+    real_labels, pred_labels = [], []
+    for it, (images, real_label) in enumerate(metric_logger.log_every(data_loader, 10, header)):
         # update weight decay and learning rate according to their schedule
         it = len(data_loader) * epoch + it  # global training iteration
         for i, param_group in enumerate(optimizer.param_groups):
@@ -310,8 +324,17 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
         # teacher and student forward passes + compute dino loss
         with torch.cuda.amp.autocast(fp16_scaler is not None):
             teacher_output = teacher(images[:2])  # only the 2 global views pass through the teacher
-            student_output = student(images)
+            student_output = student(images) ## (2+L)B x C
+            all_feats = student_output.chunk(2+args.local_crops_number)
+            all_probs = [torch.nn.functional.softmax(f, dim=-1) for f in all_feats]
+
             loss = dino_loss(student_output, teacher_output, epoch)
+        
+        pred1 = utils.concat_all_gather(all_probs[0].max(dim=1)[1])
+        pred2 = utils.concat_all_gather(all_probs[1].max(dim=1)[1])
+        acc = (pred1 == pred2).sum()/pred1.size(0)
+        pred_labels.append(pred1)
+        real_labels.append(utils.concat_all_gather(real_label.to(device).long()))
 
         if not math.isfinite(loss.item()):
             print("Loss is {}, stopping training".format(loss.item()), force=True)
@@ -346,12 +369,17 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
         # logging
         torch.cuda.synchronize()
         metric_logger.update(loss=loss.item())
+        metric_logger.update(acc=acc)
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
+    return_dic = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    nmi, ami, ari, fscore, adjacc = eval_pred(real_labels, pred_labels, calc_acc=False)
+    print("NMI: {}, AMI: {}, ARI: {}, F: {}, ACC: {}".format(nmi, ami, ari, fscore, adjacc))
+    return_dic.update({"nmi": nmi, "ami": ami, "ari": ari, "fscore": fscore, "adjacc": adjacc})
     print("Averaged stats:", metric_logger)
-    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    return return_dic
 
 
 class DINOLoss(nn.Module):
