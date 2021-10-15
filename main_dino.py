@@ -334,6 +334,8 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
             for i_student in range(len(all_probs)):
                 eh += EH(all_probs[i_student])/utils.get_world_size()
                 he += HE(all_probs[i_student])
+            eh /= len(all_probs)
+            he /= len(all_probs)
             carl = utils.get_world_size() * math.log(utils.get_world_size())
             he = (he + carl)/utils.get_world_size()
 
