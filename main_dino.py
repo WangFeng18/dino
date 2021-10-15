@@ -36,6 +36,7 @@ import utils
 import vision_transformer as vits
 from vision_transformer import DINOHead
 from evaluate_cluster import evaluate as eval_pred
+from objective import *
 
 torchvision_archs = sorted(name for name in torchvision_models.__dict__
     if name.islower() and not name.startswith("__")
@@ -326,7 +327,15 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
             teacher_output = teacher(images[:2])  # only the 2 global views pass through the teacher
             student_output = student(images) ## (2+L)B x C
             all_feats = student_output.chunk(2+args.local_crops_number)
+            
+            ## trace internal variations
             all_probs = [torch.nn.functional.softmax(f, dim=-1) for f in all_feats]
+            eh, he = 0, 0
+            for i_student in range(len(all_probs)):
+                eh += EH(all_probs[i_student])/utils.get_world_size()
+                he += HE(all_probs[i_student])
+            carl = utils.get_world_size() * math.log(utils.get_world_size())
+            he = (he + carl)/utils.get_world_size()
 
             loss = dino_loss(student_output, teacher_output, epoch)
         
@@ -369,10 +378,14 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
         # logging
         torch.cuda.synchronize()
         metric_logger.update(loss=loss.item())
+        metric_logger.update(he=he.item())
+        metric_logger.update(eh=eh.item())
         metric_logger.update(acc=acc)
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(wd=optimizer.param_groups[0]["weight_decay"])
     # gather the stats from all processes
+    pred_labels = torch.cat(pred_labels).cpu().detach().numpy()
+    real_labels = torch.cat(real_labels).cpu().detach().numpy()
     metric_logger.synchronize_between_processes()
     return_dic = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
     nmi, ami, ari, fscore, adjacc = eval_pred(real_labels, pred_labels, calc_acc=False)
