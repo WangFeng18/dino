@@ -388,6 +388,7 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
     # gather the stats from all processes
     pred_labels = torch.cat(pred_labels).cpu().detach().numpy()
     real_labels = torch.cat(real_labels).cpu().detach().numpy()
+    np.save('pred_labels.npy', pred_labels)
     metric_logger.synchronize_between_processes()
     return_dic = {k: meter.global_avg for k, meter in metric_logger.meters.items()}
     nmi, ami, ari, fscore, adjacc = eval_pred(real_labels, pred_labels, calc_acc=False)
