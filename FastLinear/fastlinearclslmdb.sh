@@ -10,11 +10,9 @@ cd FastLinear/
 
 if [[ ${TYPE} =~ mm ]]; then
     if [[ ${BACKBONE} =~ vit_s ]]; then
-        python3 -m torch.distributed.launch --nproc_per_node=8 --master_port=$((RANDOM + 10000)) generate_memory_bank.py --task minmaxent --pretrained_path ${PRETRAIN} --save_path ${MM} --feat_dim 384 --batch_size 128 --feature_layer 'lastconv' --use-lmdb --data_path /opt/tiger/wf/datasets/imagenet/ --backbone ${BACKBONE};
+        python3 -m torch.distributed.launch --nproc_per_node=8 --master_port=$((RANDOM + 10000)) generate_memory_bank.py --task dino --pretrained_path ${PRETRAIN} --save_path ${MM} --feat_dim 384 --batch_size 128 --feature_layer 'lastconv' --use-lmdb --data_path /opt/tiger/wf/datasets/imagenet/ --backbone ${BACKBONE};
     elif [[ ${BACKBONE} =~ vit_b ]]; then
-        python3 -m torch.distributed.launch --nproc_per_node=8 --master_port=$((RANDOM + 10000)) generate_memory_bank.py --task minmaxent --pretrained_path ${PRETRAIN} --save_path ${MM} --feat_dim 768 --batch_size 128 --feature_layer 'lastconv' --use-lmdb --data_path /opt/tiger/wf/datasets/imagenet/ --backbone ${BACKBONE};
-    else
-        python3 -m torch.distributed.launch --nproc_per_node=8 --master_port=$((RANDOM + 10000)) generate_memory_bank.py --task minmaxent --pretrained_path ${PRETRAIN} --save_path ${MM} --feat_dim 2048 --batch_size 128 --feature_layer 'lastconv' --use-lmdb --data_path /opt/tiger/wf/datasets/imagenet/ --backbone ${BACKBONE};
+        python3 -m torch.distributed.launch --nproc_per_node=8 --master_port=$((RANDOM + 10000)) generate_memory_bank.py --task dino --pretrained_path ${PRETRAIN} --save_path ${MM} --feat_dim 768 --batch_size 128 --feature_layer 'lastconv' --use-lmdb --data_path /opt/tiger/wf/datasets/imagenet/ --backbone ${BACKBONE};
     fi
 
 fi
