@@ -5,7 +5,7 @@ import torch
 from datasets import ImageNetInstance, ImageNetInstanceLMDB
 from torchvision import transforms
 import argparse
-from BaseTaskModel.task_network import get_moco_network, get_swav_network, get_selfboost_network, get_minmaxent_network, get_simclr_network, get_sup_network
+from BaseTaskModel.task_network import get_moco_network, get_swav_network, get_selfboost_network, get_minmaxent_network, get_simclr_network, get_sup_network, get_dino_network
 from torch.utils.data import DataLoader
 from PIL import ImageFile, Image
 import torch.distributed as dist
